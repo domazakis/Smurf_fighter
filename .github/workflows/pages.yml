@@ -1,0 +1,38 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: ["claude/simple-fighting-game-html-fi6go0"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Μία ανάπτυξη τη φορά· δεν ακυρώνει μια που ήδη τρέχει.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # enablement: true ενεργοποιεί το Pages αν δεν είναι ήδη ανοιχτό
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      # Το παιχνίδι είναι ένα αρχείο στη ρίζα, οπότε ανεβαίνει όλο το repo
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
