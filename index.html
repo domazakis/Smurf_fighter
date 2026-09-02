@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#05070f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Smurf Fighter</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: #05070f; overflow: hidden;
+    touch-action: none; overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: #e8eefc;
+  }
+
+  #stage {
+    position: fixed; inset: 0;
+    display: flex; justify-content: center; align-items: center;
+  }
+  body.portrait #stage { align-items: center; padding-bottom: 16vh; }
+
+  canvas {
+    display: block; touch-action: none;
+    border-radius: 6px;
+    box-shadow: 0 10px 40px rgba(0,0,0,.7);
+  }
+
+  /* ---------- touch controls ---------- */
+  #controls { position: fixed; inset: 0; pointer-events: none; }
+
+  .cluster {
+    position: absolute; bottom: max(14px, env(safe-area-inset-bottom));
+    display: flex; gap: 8px; align-items: flex-end;
+  }
+  #padLeft  { left:  max(14px, env(safe-area-inset-left)); }
+  #padRight { right: max(14px, env(safe-area-inset-right)); }
+
+  .btn {
+    pointer-events: auto;
+    width: var(--sz); height: var(--sz);
+    --sz: max(44px, min(13.5vw, 15vh, 92px));
+    border-radius: 50%;
+    border: 2px solid rgba(160,200,255,.45);
+    background: rgba(20,32,60,.5);
+    backdrop-filter: blur(3px);
+    color: #dce9ff;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 1px; line-height: 1;
+    font-size: clamp(19px, 4.6vmin, 30px);
+    transition: transform .06s, background .06s;
+  }
+  .btn small { font-size: clamp(7px, 1.7vmin, 10px); opacity: .75; letter-spacing: .4px; }
+  .btn.active { background: rgba(90,150,255,.65); transform: scale(.93); }
+  .btn.atk { border-color: rgba(255,170,120,.55); background: rgba(70,30,30,.5); }
+  .btn.atk.active { background: rgba(255,120,70,.7); }
+  .btn.def { border-color: rgba(140,255,200,.5); background: rgba(20,50,45,.5); }
+  .btn.def.active { background: rgba(70,230,180,.6); }
+  #btnJump { --sz: max(40px, min(12vw, 13vh, 80px)); }
+
+  #topBar {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    bottom: max(14px, env(safe-area-inset-bottom));
+    display: flex; gap: 8px; pointer-events: none;
+  }
+  body.portrait #topBar { bottom: calc(max(14px, env(safe-area-inset-bottom)) + 22vw + 14px); }
+  .mini {
+    pointer-events: auto;
+    width: 38px; height: 38px; border-radius: 10px;
+    border: 1px solid rgba(160,200,255,.35);
+    background: rgba(12,20,40,.6); color: #cfe0ff;
+    font-size: 18px; display: flex; align-items: center; justify-content: center;
+  }
+  .mini.active { background: rgba(90,150,255,.55); }
+
+  /* ---------- overlays ---------- */
+  #overlay {
+    position: fixed; inset: 0; z-index: 20;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 14px; padding: 20px;
+    background: radial-gradient(circle at 50% 40%, rgba(30,50,110,.92), rgba(3,5,12,.97));
+    text-align: center;
+  }
+  #overlay.hidden { display: none; }
+  #overlay h1 {
+    margin: 0; font-size: clamp(28px, 8vmin, 58px); letter-spacing: 2px;
+    background: linear-gradient(180deg, #9fd4ff, #3c7cff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-shadow: 0 4px 18px rgba(60,124,255,.35);
+  }
+  #overlay p { margin: 0; opacity: .8; font-size: clamp(12px, 3.4vmin, 16px); max-width: 34em; line-height: 1.5; }
+  #ovTitle { margin: 0; font-size: clamp(20px, 6vmin, 34px); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .opt {
+    padding: 10px 18px; border-radius: 12px; font-size: clamp(13px, 3.4vmin, 17px);
+    border: 2px solid rgba(140,180,255,.35); background: rgba(20,32,60,.6); color: #dce9ff;
+  }
+  .opt.sel { border-color: #6aa8ff; background: rgba(70,130,255,.45); }
+  .go {
+    padding: 14px 34px; border-radius: 14px; font-weight: 700;
+    font-size: clamp(16px, 4.6vmin, 22px); letter-spacing: 1px;
+    border: none; background: linear-gradient(180deg, #4d95ff, #2a5ce0);
+    color: #fff; box-shadow: 0 6px 22px rgba(45,100,255,.45);
+  }
+  .go:active { transform: scale(.97); }
+  .hint { font-size: clamp(11px, 2.9vmin, 14px); opacity: .6; }
+  .keys { opacity: .5; font-size: clamp(10px, 2.6vmin, 13px); }
+</style>
+</head>
+<body>
+
+<div id="stage"><canvas id="game"></canvas></div>
+
+<div id="controls">
+  <div id="topBar">
+    <button class="mini" id="btnSound" aria-label="Ήχος">🔊</button>
+    <button class="mini" id="btnFull" aria-label="Πλήρης οθόνη">⛶</button>
+    <button class="mini" id="btnPause" aria-label="Παύση">⏸</button>
+  </div>
+
+  <div class="cluster" id="padLeft">
+    <button class="btn" id="btnLeft">◀<small>ΑΡΙΣΤΕΡΑ</small></button>
+    <button class="btn" id="btnJump">⬆<small>ΑΛΜΑ</small></button>
+    <button class="btn" id="btnRight">▶<small>ΔΕΞΙΑ</small></button>
+  </div>
+
+  <div class="cluster" id="padRight">
+    <button class="btn def" id="btnBlock">🛡<small>ΑΜΥΝΑ</small></button>
+    <button class="btn atk" id="btnKick">🦵<small>ΚΛΩΤΣΙΑ</small></button>
+    <button class="btn atk" id="btnPunch">👊<small>ΓΡΟΘΙΑ</small></button>
+  </div>
+</div>
+
+<div id="overlay">
+  <h1>SMURF FIGHTER</h1>
+  <h2 id="ovTitle"></h2>
+  <p id="ovText">Μονομαχία ενός παίκτη. Νίκησε τον Κακόστρουμφ σε 2 από 3 γύρους.</p>
+  <div class="row" id="diffRow">
+    <button class="opt" data-diff="easy">Εύκολο</button>
+    <button class="opt sel" data-diff="normal">Κανονικό</button>
+    <button class="opt" data-diff="hard">Δύσκολο</button>
+  </div>
+  <div class="row">
+    <button class="go" id="btnStart">ΠΑΙΞΕ</button>
+  </div>
+  <div class="hint">Κράτα το κινητό οριζόντια για μεγαλύτερη εικόνα.</div>
+  <div class="keys">Πληκτρολόγιο: ← → κίνηση · ↑ άλμα · J γροθιά · K κλωτσιά · L άμυνα</div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+/* =========================================================
+   Σταθερές κόσμου
+   ========================================================= */
+const W = 800, H = 450, GROUND = 372, STEP = 1000 / 60;
+const GRAV = 0.62, JUMP_V = -11.4, WALK_F = 2.75, WALK_B = 2.05;
+const BODY_HW = 18, BODY_H = 92, PUSH_D = 38;
+const ROUND_SECONDS = 60, ROUNDS_TO_WIN = 2;
+
+const ATTACKS = {
+  punch: { startup: 4,  active: 4, recovery: 10, dmg: 6,  kb: 2.4, box: [14, -70, 48, 26] },
+  kick:  { startup: 8,  active: 5, recovery: 17, dmg: 11, kb: 4.6, box: [12, -52, 62, 30] }
+};
+
+const DIFF = {
+  easy:   { react: [16, 28], aggr: 0.34, blockChance: 0.14, speed: 0.85, label: 'Εύκολο' },
+  normal: { react: [10, 19], aggr: 0.55, blockChance: 0.34, speed: 1.00, label: 'Κανονικό' },
+  hard:   { react: [5,  11], aggr: 0.76, blockChance: 0.56, speed: 1.10, label: 'Δύσκολο' }
+};
+
+const PAL_HERO = {
+  skin: '#7fd0ff', skinDark: '#4fa8e8', body: '#63c2f7', shorts: '#ffffff',
+  hat: '#ffffff', leg: '#4fa8e8', legBack: '#3d8ec9', arm: '#63c2f7', armBack: '#4a9fdd',
+  eye: '#ffffff', pupil: '#12283f', brow: null
+};
+const PAL_VILLAIN = {
+  skin: '#8a7bd8', skinDark: '#5f52a5', body: '#6f5fc4', shorts: '#c8342f',
+  hat: '#2b2340', leg: '#5f52a5', legBack: '#4b3f88', arm: '#6f5fc4', armBack: '#5a4bab',
+  eye: '#ffe9c7', pupil: '#3a0f10', brow: '#1c1430'
+};
+const PAL_FLASH = {
+  skin: '#ffffff', skinDark: '#ffe9e9', body: '#ffffff', shorts: '#ffffff',
+  hat: '#ffffff', leg: '#ffe9e9', legBack: '#ffd8d8', arm: '#ffffff', armBack: '#ffe9e9',
+  eye: '#ffffff', pupil: '#ff5a5a', brow: '#ff8a8a'
+};
+
+/* =========================================================
+   Canvas + κλιμάκωση
+   ========================================================= */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+function layout() {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const portrait = vh > vw;
+  document.body.classList.toggle('portrait', portrait);
+  const availH = portrait ? vh * 0.58 : vh;
+  const scale = Math.min(vw / W, availH / H);
+  const cssW = Math.floor(W * scale), cssH = Math.floor(H * scale);
+  const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  canvas.style.width = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+}
+window.addEventListener('resize', layout);
+window.addEventListener('orientationchange', () => setTimeout(layout, 120));
+
+/* =========================================================
+   Ήχος (WebAudio, χωρίς αρχεία)
+   ========================================================= */
+let actx = null, muted = false;
+function audioUnlock() {
+  if (actx) { if (actx.state === 'suspended') actx.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (AC) actx = new AC();
+}
+function tone(freq, dur, type, vol, slideTo) {
+  if (muted || !actx) return;
+  const t0 = actx.currentTime;
+  const osc = actx.createOscillator(), g = actx.createGain();
+  osc.type = type; osc.frequency.setValueAtTime(freq, t0);
+  if (slideTo) osc.frequency.exponentialRampToValueAtTime(Math.max(30, slideTo), t0 + dur);
+  g.gain.setValueAtTime(vol, t0);
+  g.gain.exponentialRampToValueAtTime(0.0008, t0 + dur);
+  osc.connect(g); g.connect(actx.destination);
+  osc.start(t0); osc.stop(t0 + dur + 0.02);
+}
+const SFX = {
+  swing: () => tone(320, 0.09, 'sawtooth', 0.05, 140),
+  hit:   () => { tone(150, 0.14, 'square', 0.12, 60); tone(420, 0.07, 'triangle', 0.07, 180); },
+  block: () => tone(760, 0.09, 'square', 0.07, 520),
+  jump:  () => tone(300, 0.13, 'sine', 0.06, 620),
+  ko:    () => { tone(200, 0.5, 'sawtooth', 0.13, 45); tone(90, 0.6, 'square', 0.09, 35); },
+  bell:  () => { tone(880, 0.16, 'triangle', 0.09); setTimeout(() => tone(1320, 0.22, 'triangle', 0.08), 130); }
+};
+
+/* =========================================================
+   Είσοδος (touch + πληκτρολόγιο)
+   ========================================================= */
+const input = { left: false, right: false, block: false, jumpQ: 0, punchQ: 0, kickQ: 0 };
+const BUFFER = 7; // frames ανοχής για tap
+
+function bindHold(el, on, off) {
+  const down = e => {
+    e.preventDefault();
+    audioUnlock();
+    try { el.setPointerCapture(e.pointerId); } catch (_) {}
+    el.classList.add('active');
+    on();
+  };
+  const up = e => { e.preventDefault(); el.classList.remove('active'); if (off) off(); };
+  el.addEventListener('pointerdown', down);
+  el.addEventListener('pointerup', up);
+  el.addEventListener('pointercancel', up);
+  el.addEventListener('lostpointercapture', up);
+  el.addEventListener('contextmenu', e => e.preventDefault());
+}
+
+bindHold(document.getElementById('btnLeft'),  () => input.left = true,  () => input.left = false);
+bindHold(document.getElementById('btnRight'), () => input.right = true, () => input.right = false);
+bindHold(document.getElementById('btnBlock'), () => input.block = true, () => input.block = false);
+bindHold(document.getElementById('btnJump'),  () => input.jumpQ = BUFFER);
+bindHold(document.getElementById('btnPunch'), () => input.punchQ = BUFFER);
+bindHold(document.getElementById('btnKick'),  () => input.kickQ = BUFFER);
+
+document.addEventListener('keydown', e => {
+  if (e.repeat) return;
+  switch (e.key) {
+    case 'ArrowLeft': case 'a': case 'A': input.left = true; break;
+    case 'ArrowRight': case 'd': case 'D': input.right = true; break;
+    case 'ArrowUp': case 'w': case 'W': case ' ': input.jumpQ = BUFFER; break;
+    case 'j': case 'J': input.punchQ = BUFFER; break;
+    case 'k': case 'K': input.kickQ = BUFFER; break;
+    case 'l': case 'L': case 'Shift': input.block = true; break;
+    case 'Enter': if (!overlay.classList.contains('hidden')) startBtn.click(); break;
+    case 'p': case 'P': case 'Escape': togglePause(); break;
+  }
+  if (['ArrowLeft','ArrowRight','ArrowUp',' '].includes(e.key)) e.preventDefault();
+});
+document.addEventListener('keyup', e => {
+  switch (e.key) {
+    case 'ArrowLeft': case 'a': case 'A': input.left = false; break;
+    case 'ArrowRight': case 'd': case 'D': input.right = false; break;
+    case 'l': case 'L': case 'Shift': input.block = false; break;
+  }
+});
+document.addEventListener('gesturestart', e => e.preventDefault());
+
+/* =========================================================
+   Μαχητής
+   ========================================================= */
+function makeFighter(name, pal, isPlayer) {
+  return {
+    name, pal, isPlayer,
+    x: 0, y: GROUND, vx: 0, vy: 0, dir: 1, air: false,
+    hp: 100, hpShown: 100,
+    state: 'idle', stateT: 0, animT: 0,
+    attack: null, atkFrame: 0, hasHit: false,
+    hitFlash: 0, blockHold: 0,
+    ai: { timer: 0, action: 'wait', dur: 0 }
+  };
+}
+
+function resetFighter(f, x, dir) {
+  f.x = x; f.y = GROUND; f.vx = 0; f.vy = 0; f.dir = dir; f.air = false;
+  f.hp = 100; f.hpShown = 100;
+  f.state = 'idle'; f.stateT = 0; f.attack = null; f.atkFrame = 0;
+  f.hasHit = false; f.hitFlash = 0;
+}
+
+function bodyRect(f) {
+  return { x: f.x - BODY_HW, y: f.y - BODY_H, w: BODY_HW * 2, h: BODY_H };
+}
+function attackRect(f) {
+  const A = ATTACKS[f.attack], b = A.box;
+  const x = f.dir > 0 ? f.x + b[0] : f.x - b[0] - b[2];
+  return { x, y: f.y + b[1], w: b[2], h: b[3] };
+}
+function overlap(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+const busy = f => f.state === 'attack' || f.state === 'hurt' || f.state === 'ko' || f.state === 'blockstun';
+
+function startAttack(f, kind) {
+  f.state = 'attack'; f.attack = kind; f.atkFrame = 0; f.hasHit = false;
+  SFX.swing();
+}
+
+function takeHit(target, attacker, A) {
+  const facingAttacker = (attacker.x - target.x) * target.dir > 0;
+  const blocking = target.state === 'block' && facingAttacker && !target.air;
+  const kbDir = attacker.x < target.x ? 1 : -1;
+
+  if (blocking) {
+    target.hp -= Math.max(1, Math.round(A.dmg * 0.18));
+    target.vx += kbDir * A.kb * 0.55;
+    target.state = 'blockstun'; target.stateT = 8;
+    sparks(target.x + (-kbDir) * 16, target.y - 52, '#bfe9ff', 8, 1.6);
+    shake(2);
+    SFX.block();
+  } else {
+    target.hp -= A.dmg;
+    target.vx += kbDir * A.kb;
+    target.hitFlash = 10;
+    target.state = 'hurt'; target.stateT = 14;
+    target.attack = null;
+    sparks(target.x + (-kbDir) * 12, target.y - 58, '#ffd76a', 14, 3);
+    shake(A.dmg >= 10 ? 7 : 4);
+    SFX.hit();
+  }
+  if (target.hp <= 0) {
+    target.hp = 0;
+    target.state = 'ko'; target.stateT = 0;
+    target.vx = kbDir * 3.4; target.vy = -5;
+    shake(11);
+    SFX.ko();
+  }
+}
+
+/* cmd: {move:-1|0|1, jump, punch, kick, block}  → επιστρέφει τι καταναλώθηκε */
+function stepFighter(f, cmd, live) {
+  const used = { jump: false, punch: false, kick: false };
+  f.animT++;
+  if (f.hitFlash > 0) f.hitFlash--;
+
+  if (f.state === 'ko' || f.state === 'win' || !live) {
+    if (f.state === 'ko') f.stateT++;
+    if (f.state === 'win') f.stateT++;
+  } else if (f.state === 'hurt' || f.state === 'blockstun') {
+    if (--f.stateT <= 0) f.state = 'idle';
+  } else if (f.state === 'attack') {
+    const A = ATTACKS[f.attack];
+    f.atkFrame++;
+    if (f.atkFrame >= A.startup + A.active + A.recovery) {
+      f.state = 'idle'; f.attack = null; f.atkFrame = 0;
+    }
+  } else {
+    // ελεύθερος έλεγχος
+    if (cmd.punch) { startAttack(f, 'punch'); used.punch = true; }
+    else if (cmd.kick) { startAttack(f, 'kick'); used.kick = true; }
+    else if (cmd.block && !f.air) { f.state = 'block'; }
+    else {
+      f.state = f.air ? 'air' : 'idle';
+      if (cmd.jump && !f.air) {
+        f.vy = JUMP_V; f.air = true; f.state = 'air'; used.jump = true; SFX.jump();
+      }
+      if (cmd.move !== 0) {
+        const forward = cmd.move === f.dir;
+        const sp = (forward ? WALK_F : WALK_B) * (f.air ? 0.75 : 1) * (f.speedMul || 1);
+        f.vx += (cmd.move * sp - f.vx) * (f.air ? 0.18 : 0.55);
+        if (!f.air) f.state = 'walk';
+      } else if (!f.air) {
+        f.vx *= 0.6;
+      }
+    }
+  }
+
+  // φυσική
+  f.x += f.vx;
+  f.vx *= f.air ? 0.99 : 0.82;
+  if (Math.abs(f.vx) < 0.05) f.vx = 0;
+
+  f.vy += GRAV;
+  f.y += f.vy;
+  if (f.y >= GROUND) {
+    if (f.air) { f.air = false; if (f.state === 'air') f.state = 'idle'; }
+    f.y = GROUND; f.vy = 0;
+  } else {
+    f.air = true;
+  }
+  if (f.state === 'ko' && f.y >= GROUND) f.vx *= 0.85;
+
+  f.x = Math.max(26, Math.min(W - 26, f.x));
+  return used;
+}
+
+/* =========================================================
+   Τεχνητή νοημοσύνη αντιπάλου
+   ========================================================= */
+const rnd = (a, b) => a + Math.random() * (b - a);
+const ri = (a, b) => Math.floor(rnd(a, b + 1));
+
+function aiCommand(ai, foe, cfg, round) {
+  const cmd = { move: 0, jump: false, punch: false, kick: false, block: false };
+  if (ai.state === 'ko' || busy(ai)) { ai.ai.timer = Math.max(ai.ai.timer, 4); return cmd; }
+
+  const dist = Math.abs(foe.x - ai.x);
+  const toward = foe.x > ai.x ? 1 : -1;
+  const aggr = Math.min(0.92, cfg.aggr + (round - 1) * 0.06);
+  const blockChance = Math.min(0.8, cfg.blockChance + (round - 1) * 0.05);
+  const A = ai.ai;
+
+  // αντίδραση: μπλοκάρει αν ο παίκτης ξεκινά επίθεση κοντά
+  if (foe.state === 'attack' && dist < 95 && !ai.air) {
+    const fa = ATTACKS[foe.attack];
+    if (foe.atkFrame <= fa.startup + 1 && Math.random() < blockChance) {
+      A.action = 'block'; A.dur = ri(14, 26); A.timer = 0;
+    }
+  }
+
+  if (A.timer > 0) A.timer--;
+  if (A.dur > 0) A.dur--;
+
+  if (A.dur <= 0 && A.timer <= 0) {
+    const r = Math.random();
+    if (dist > 210) {
+      A.action = r < 0.82 ? 'approach' : 'jumpin';
+      A.dur = ri(14, 30);
+    } else if (dist > 88) {
+      if (r < aggr) { A.action = 'approach'; A.dur = ri(10, 22); }
+      else if (r < aggr + 0.18) { A.action = 'retreat'; A.dur = ri(8, 18); }
+      else { A.action = 'wait'; A.dur = ri(6, 16); }
+    } else {
+      if (r < aggr * 0.62) { A.action = 'punch'; A.dur = 6; }
+      else if (r < aggr * 0.92) { A.action = 'kick'; A.dur = 8; }
+      else if (r < aggr * 0.92 + 0.16) { A.action = 'block'; A.dur = ri(12, 24); }
+      else if (r < aggr * 0.92 + 0.24) { A.action = 'retreat'; A.dur = ri(8, 16); }
+      else { A.action = 'wait'; A.dur = ri(4, 12); }
+    }
+    A.timer = ri(cfg.react[0], cfg.react[1]);
+  }
+
+  switch (A.action) {
+    case 'approach': cmd.move = toward; break;
+    case 'retreat':  cmd.move = -toward; break;
+    case 'jumpin':   cmd.move = toward; cmd.jump = !ai.air && Math.random() < 0.14; break;
+    case 'block':    cmd.block = true; break;
+    case 'punch':    if (dist < 86) cmd.punch = true; else cmd.move = toward; break;
+    case 'kick':     if (dist < 98) cmd.kick = true; else cmd.move = toward; break;
+    default: break;
+  }
+  return cmd;
+}
+
+/* =========================================================
+   Εφέ
+   ========================================================= */
+const particles = [];
+let shakeAmt = 0;
+function shake(v) { shakeAmt = Math.min(14, shakeAmt + v); }
+function sparks(x, y, color, n, sp) {
+  for (let i = 0; i < n; i++) {
+    const a = rnd(0, Math.PI * 2), s = rnd(0.6, sp);
+    particles.push({ x, y, vx: Math.cos(a) * s * 1.7, vy: Math.sin(a) * s - 1, life: ri(14, 30), color, r: rnd(1.5, 3.6) });
+  }
+}
+function stepParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy; p.vy += 0.16; p.vx *= 0.97; p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+  if (shakeAmt > 0) shakeAmt = Math.max(0, shakeAmt - 0.7);
+}
+
+/* =========================================================
+   Κατάσταση αγώνα
+   ========================================================= */
+const hero = makeFighter('ΣΤΡΟΥΜΦ', PAL_HERO, true);
+const villain = makeFighter('ΚΑΚΟΣΤΡΟΥΜΦ', PAL_VILLAIN, false);
+
+const M = {
+  mode: 'menu',        // menu | playing | paused | over
+  phase: 'intro',      // intro | fight | end
+  phaseT: 0,
+  round: 1,
+  wins: [0, 0],
+  timer: ROUND_SECONDS * 60,
+  big: '', bigT: 0,
+  diff: 'normal'
+};
+
+function startMatch(diff) {
+  M.diff = diff; M.round = 1; M.wins = [0, 0]; M.mode = 'playing';
+  particles.length = 0;
+  startRound();
+}
+function startRound() {
+  resetFighter(hero, 250, 1);
+  resetFighter(villain, 550, -1);
+  villain.speedMul = DIFF[M.diff].speed;
+  villain.ai = { timer: 0, action: 'wait', dur: 0 };
+  M.timer = ROUND_SECONDS * 60;
+  M.phase = 'intro'; M.phaseT = 150;
+  M.big = 'ΓΥΡΟΣ ' + M.round; M.bigT = 0;
+}
+function endRound(winner) {   // 0 = παίκτης, 1 = αντίπαλος, -1 = ισοπαλία
+  M.phase = 'end'; M.phaseT = 160; M.bigT = 0;
+  if (winner === 0) { M.wins[0]++; M.big = 'K.O.'; hero.state = 'win'; hero.stateT = 0; }
+  else if (winner === 1) { M.wins[1]++; M.big = 'K.O.'; villain.state = 'win'; villain.stateT = 0; }
+  else M.big = 'ΤΕΛΟΣ ΧΡΟΝΟΥ';
+  if (villain.hp <= 0 || hero.hp <= 0) M.big = 'K.O.';
+}
+
+function update() {
+  if (M.mode !== 'playing') { stepParticles(); return; }
+  M.bigT++;
+
+  const live = M.phase === 'fight';
+
+  // εντολές παίκτη
+  const pcmd = {
+    move: (input.right ? 1 : 0) - (input.left ? 1 : 0),
+    jump: input.jumpQ > 0, punch: input.punchQ > 0, kick: input.kickQ > 0,
+    block: input.block
+  };
+  if (input.jumpQ > 0) input.jumpQ--;
+  if (input.punchQ > 0) input.punchQ--;
+  if (input.kickQ > 0) input.kickQ--;
+  if (!live) { pcmd.move = 0; pcmd.jump = pcmd.punch = pcmd.kick = false; pcmd.block = false; }
+
+  const acmd = live ? aiCommand(villain, hero, DIFF[M.diff], M.round)
+                    : { move: 0, jump: false, punch: false, kick: false, block: false };
+
+  // αυτόματη στροφή προς τον αντίπαλο
+  for (const [f, o] of [[hero, villain], [villain, hero]]) {
+    if (!busy(f) && f.state !== 'ko' && f.state !== 'win' && !f.air) f.dir = o.x >= f.x ? 1 : -1;
+  }
+
+  const used = stepFighter(hero, pcmd, live || hero.state === 'ko' || hero.state === 'win');
+  if (used.jump) input.jumpQ = 0;
+  if (used.punch) input.punchQ = 0;
+  if (used.kick) input.kickQ = 0;
+  stepFighter(villain, acmd, live || villain.state === 'ko' || villain.state === 'win');
+
+  // απώθηση σωμάτων
+  const dx = villain.x - hero.x;
+  if (Math.abs(dx) < PUSH_D && Math.abs(hero.y - villain.y) < 70) {
+    const s = Math.sign(dx) || 1;
+    const push = (PUSH_D - Math.abs(dx)) / 2 * s;
+    villain.x = Math.max(26, Math.min(W - 26, villain.x + push));
+    hero.x = Math.max(26, Math.min(W - 26, hero.x - push));
+  }
+
+  // χτυπήματα
+  if (live) {
+    for (const [a, b] of [[hero, villain], [villain, hero]]) {
+      if (a.state !== 'attack' || a.hasHit) continue;
+      const A = ATTACKS[a.attack];
+      if (a.atkFrame < A.startup || a.atkFrame >= A.startup + A.active) continue;
+      if (b.state === 'ko') continue;
+      if (overlap(attackRect(a), bodyRect(b))) { a.hasHit = true; takeHit(b, a, A); }
+    }
+  }
+
+  // ομαλή μπάρα ζωής
+  for (const f of [hero, villain]) f.hpShown += (f.hp - f.hpShown) * 0.12;
+
+  stepParticles();
+
+  // ροή γύρου
+  if (M.phase === 'intro') {
+    if (M.phaseT === 150) SFX.bell();
+    M.phaseT--;
+    if (M.phaseT === 62) { M.big = 'ΠΑΛΕΨΕ!'; M.bigT = 0; SFX.bell(); }
+    if (M.phaseT <= 0) { M.phase = 'fight'; M.big = ''; }
+  } else if (M.phase === 'fight') {
+    M.timer--;
+    if (villain.hp <= 0) endRound(0);
+    else if (hero.hp <= 0) endRound(1);
+    else if (M.timer <= 0) {
+      M.timer = 0;
+      endRound(hero.hp === villain.hp ? -1 : (hero.hp > villain.hp ? 0 : 1));
+    }
+  } else if (M.phase === 'end') {
+    M.phaseT--;
+    if (M.phaseT === 120) {
+      if (M.wins[0] >= ROUNDS_TO_WIN || M.wins[1] >= ROUNDS_TO_WIN) M.big = M.wins[0] >= ROUNDS_TO_WIN ? 'ΝΙΚΗΣΕΣ!' : 'ΕΧΑΣΕΣ';
+      else M.big = M.wins[0] > M.wins[1] ? 'ΚΕΡΔΙΣΕΣ ΤΟΝ ΓΥΡΟ' : (M.wins[0] < M.wins[1] ? 'ΕΧΑΣΕΣ ΤΟΝ ΓΥΡΟ' : 'ΙΣΟΠΑΛΙΑ');
+      M.bigT = 0;
+    }
+    if (M.phaseT <= 0) {
+      if (M.wins[0] >= ROUNDS_TO_WIN || M.wins[1] >= ROUNDS_TO_WIN) showResult();
+      else { M.round++; startRound(); }
+    }
+  }
+}
+
+/* =========================================================
+   Σχεδίαση
+   ========================================================= */
+const stars = Array.from({ length: 46 }, () => ({ x: Math.random() * W, y: Math.random() * 210, r: rnd(0.5, 1.6), a: rnd(0.25, 0.9) }));
+const clouds = Array.from({ length: 4 }, (_, i) => ({ x: rnd(0, W), y: rnd(40, 140), s: rnd(0.6, 1.3), v: rnd(0.04, 0.13) * (i % 2 ? 1 : -1) }));
+
+function drawBackground() {
+  const g = ctx.createLinearGradient(0, 0, 0, GROUND + 40);
+  g.addColorStop(0, '#0b1b3f'); g.addColorStop(0.55, '#1b3a6b'); g.addColorStop(1, '#2c5b7d');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+  for (const s of stars) { ctx.globalAlpha = s.a; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 6.284); ctx.fill(); }
+  ctx.globalAlpha = 1;
+
+  // φεγγάρι
+  ctx.fillStyle = '#ffe9b8'; ctx.beginPath(); ctx.arc(690, 78, 34, 0, 6.284); ctx.fill();
+  ctx.fillStyle = 'rgba(255,233,184,.12)'; ctx.beginPath(); ctx.arc(690, 78, 58, 0, 6.284); ctx.fill();
+
+  for (const c of clouds) {
+    c.x += c.v; if (c.x > W + 90) c.x = -90; if (c.x < -90) c.x = W + 90;
+    ctx.fillStyle = 'rgba(200,220,255,.13)';
+    ctx.beginPath();
+    ctx.ellipse(c.x, c.y, 52 * c.s, 15 * c.s, 0, 0, 6.284);
+    ctx.ellipse(c.x + 30 * c.s, c.y - 8 * c.s, 34 * c.s, 13 * c.s, 0, 0, 6.284);
+    ctx.fill();
+  }
+
+  // σπιτάκια-μανιτάρια
+  const houses = [[80, 300, 1], [190, 312, .8], [610, 305, .9], [720, 316, .75]];
+  for (const [hx, hy, hs] of houses) {
+    ctx.save(); ctx.translate(hx, hy); ctx.scale(hs, hs);
+    ctx.fillStyle = '#d8d2c0';
+    ctx.beginPath(); ctx.moveTo(-26, 0); ctx.lineTo(-20, -46); ctx.lineTo(20, -46); ctx.lineTo(26, 0); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#b8342f';
+    ctx.beginPath(); ctx.moveTo(-46, -42); ctx.quadraticCurveTo(0, -110, 46, -42); ctx.quadraticCurveTo(0, -60, -46, -42); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#ffdc7a';
+    ctx.beginPath(); ctx.arc(0, -22, 8, 0, 6.284); ctx.fill();
+    ctx.restore();
+  }
+
+  // έδαφος
+  const gg = ctx.createLinearGradient(0, GROUND, 0, H);
+  gg.addColorStop(0, '#3f7f45'); gg.addColorStop(1, '#1d3a24');
+  ctx.fillStyle = gg; ctx.fillRect(0, GROUND, W, H - GROUND);
+  ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.fillRect(0, GROUND, W, 5);
+  ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.lineWidth = 2;
+  for (let i = 0; i < W; i += 26) { ctx.beginPath(); ctx.moveTo(i, GROUND + 12); ctx.lineTo(i + 8, GROUND + 4); ctx.stroke(); }
+}
+
+function limb(x1, y1, x2, y2, w, color) {
+  ctx.strokeStyle = color; ctx.lineWidth = w; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+}
+
+function drawFighter(f) {
+  // σκιά
+  const alt = (GROUND - f.y) / 120;
+  const sc = Math.max(0.45, 1 - alt * 0.45);
+  ctx.save();
+  ctx.globalAlpha = 0.3 * sc; ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.ellipse(f.x, GROUND + 6, 24 * sc, 6.5 * sc, 0, 0, 6.284); ctx.fill();
+  ctx.restore();
+
+  const P = (f.hitFlash > 0 && f.hitFlash % 4 < 2) ? PAL_FLASH : f.pal;
+  const t = f.animT;
+
+  ctx.save();
+  ctx.translate(f.x, f.y);
+  if (f.state === 'ko') {
+    const p = Math.min(1, f.stateT / 26);
+    ctx.translate(-f.dir * 14 * p, -4 * p);
+    ctx.rotate(-f.dir * 1.5 * p);
+  }
+  ctx.scale(f.dir, 1);
+
+  let bob = 0, lean = 0, crouch = 0;
+  let fa = { x: 15, y: -38 }, ba = { x: -15, y: -38 };
+  let fl = { x: 9, y: 0 }, bl = { x: -9, y: 0 };
+
+  if (f.state === 'idle' || f.state === 'win') {
+    bob = Math.sin(t * 0.07) * 1.7;
+    const s = Math.sin(t * 0.07) * 2;
+    fa = { x: 15, y: -38 + s }; ba = { x: -15, y: -38 - s };
+    if (f.state === 'win') { fa = { x: 10, y: -74 }; ba = { x: -12, y: -72 }; }
+  } else if (f.state === 'walk') {
+    const s = Math.sin(t * 0.3);
+    bob = Math.abs(Math.cos(t * 0.3)) * 1.6;
+    fl = { x: 9 + s * 12, y: 0 }; bl = { x: -9 - s * 12, y: 0 };
+    fa = { x: 14 - s * 7, y: -38 }; ba = { x: -14 + s * 7, y: -38 };
+  } else if (f.state === 'air') {
+    fl = { x: 15, y: -14 }; bl = { x: -6, y: -22 };
+    fa = { x: 17, y: -60 }; ba = { x: -17, y: -60 };
+  } else if (f.state === 'block' || f.state === 'blockstun') {
+    crouch = 5;
+    fa = { x: 19, y: -52 }; ba = { x: 13, y: -42 };
+    fl = { x: 12, y: 0 }; bl = { x: -12, y: 0 };
+    if (f.state === 'blockstun') lean = -0.12;
+  } else if (f.state === 'hurt') {
+    lean = -0.2; bob = 1;
+    fa = { x: 6, y: -58 }; ba = { x: -22, y: -50 };
+    fl = { x: 6, y: 0 }; bl = { x: -14, y: 0 };
+  } else if (f.state === 'ko') {
+    fa = { x: 18, y: -48 }; ba = { x: -20, y: -44 };
+    fl = { x: 16, y: -6 }; bl = { x: -14, y: -2 };
+  } else if (f.state === 'attack') {
+    const A = ATTACKS[f.attack], fr = f.atkFrame;
+    if (f.attack === 'punch') {
+      ba = { x: -20, y: -34 };
+      if (fr < A.startup) { const k = fr / A.startup; fa = { x: 15 - 18 * k, y: -42 - 4 * k }; lean = -0.05 * k; }
+      else if (fr < A.startup + A.active) { fa = { x: 58, y: -52 }; lean = 0.07; }
+      else { const k = (fr - A.startup - A.active) / A.recovery; fa = { x: 58 - 44 * k, y: -52 + 12 * k }; lean = 0.07 * (1 - k); }
+      fl = { x: 12, y: 0 }; bl = { x: -12, y: 0 };
+    } else {
+      ba = { x: -24, y: -54 }; fa = { x: 10, y: -46 };
+      if (fr < A.startup) { const k = fr / A.startup; fl = { x: 4 + 6 * k, y: -10 - 8 * k }; lean = -0.06 * k; }
+      else if (fr < A.startup + A.active) { fl = { x: 60, y: -42 }; lean = -0.16; crouch = -2; }
+      else { const k = (fr - A.startup - A.active) / A.recovery; fl = { x: 60 - 50 * k, y: -42 + 40 * k }; lean = -0.16 * (1 - k); }
+      bl = { x: -10, y: 0 };
+    }
+  }
+
+  ctx.translate(0, bob);
+  const hipY = -34 + crouch;
+
+  // πόδια
+  limb(0, hipY, bl.x, bl.y, 11, P.legBack);
+  limb(0, hipY, fl.x, fl.y, 11, P.leg);
+
+  ctx.save();
+  ctx.translate(0, hipY); ctx.rotate(lean); ctx.translate(0, -hipY);
+
+  const shoY = -58 + crouch;
+  // πίσω χέρι
+  limb(0, shoY, ba.x, ba.y, 9.5, P.armBack);
+  ctx.fillStyle = P.skinDark; ctx.beginPath(); ctx.arc(ba.x, ba.y, 5.2, 0, 6.284); ctx.fill();
+
+  // κορμός
+  ctx.fillStyle = P.body;
+  ctx.beginPath();
+  ctx.moveTo(-13, hipY);
+  ctx.lineTo(-11, shoY);
+  ctx.quadraticCurveTo(0, shoY - 8, 11, shoY);
+  ctx.lineTo(13, hipY);
+  ctx.quadraticCurveTo(0, hipY + 5, -13, hipY);
+  ctx.closePath(); ctx.fill();
+
+  // σορτσάκι
+  ctx.fillStyle = P.shorts;
+  ctx.beginPath();
+  ctx.moveTo(-14, hipY - 7); ctx.lineTo(14, hipY - 7);
+  ctx.lineTo(12, hipY + 8); ctx.lineTo(-12, hipY + 8);
+  ctx.closePath(); ctx.fill();
+
+  // κεφάλι
+  const hy = shoY - 18;
+  ctx.fillStyle = P.skin;
+  ctx.beginPath(); ctx.arc(2, hy, 15.5, 0, 6.284); ctx.fill();
+  ctx.fillStyle = P.skinDark;
+  ctx.beginPath(); ctx.arc(15, hy + 2, 5.4, 0, 6.284); ctx.fill(); // μύτη
+
+  // μάτια
+  ctx.fillStyle = P.eye;
+  ctx.beginPath(); ctx.ellipse(5, hy - 3, 3.6, 4.4, 0, 0, 6.284); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(12.5, hy - 3, 3.2, 4.2, 0, 0, 6.284); ctx.fill();
+  ctx.fillStyle = P.pupil;
+  const sq = (f.state === 'hurt' || f.state === 'ko') ? 0 : 1;
+  if (sq) {
+    ctx.beginPath(); ctx.arc(6.5, hy - 3, 1.9, 0, 6.284); ctx.fill();
+    ctx.beginPath(); ctx.arc(13.5, hy - 3, 1.8, 0, 6.284); ctx.fill();
+  } else {
+    limb(3, hy - 5, 8, hy - 1, 1.8, P.pupil); limb(8, hy - 5, 3, hy - 1, 1.8, P.pupil);
+    limb(10.5, hy - 5, 15, hy - 1, 1.8, P.pupil); limb(15, hy - 5, 10.5, hy - 1, 1.8, P.pupil);
+  }
+  if (P.brow) { limb(1, hy - 9, 9, hy - 6, 2.4, P.brow); limb(10, hy - 6.5, 16, hy - 9.5, 2.2, P.brow); }
+
+  // σκούφος
+  ctx.fillStyle = P.hat;
+  ctx.beginPath();
+  ctx.moveTo(-13, hy - 8);
+  ctx.quadraticCurveTo(-6, hy - 34, 12, hy - 26);
+  ctx.quadraticCurveTo(4, hy - 16, 15, hy - 8);
+  ctx.quadraticCurveTo(2, hy - 3, -13, hy - 8);
+  ctx.closePath(); ctx.fill();
+
+  // μπροστινό χέρι
+  limb(0, shoY, fa.x, fa.y, 10, P.arm);
+  ctx.fillStyle = P.skin; ctx.beginPath(); ctx.arc(fa.x, fa.y, 6, 0, 6.284); ctx.fill();
+
+  ctx.restore();
+  ctx.restore();
+}
+
+function drawHealthBars() {
+  const barW = 300, barH = 20, y = 22;
+  const draw = (x, f, right, wins) => {
+    ctx.fillStyle = 'rgba(0,0,0,.45)';
+    ctx.fillRect(x - 3, y - 3, barW + 6, barH + 6);
+    ctx.fillStyle = '#3a1414'; ctx.fillRect(x, y, barW, barH);
+
+    const shownW = barW * Math.max(0, f.hpShown) / 100;
+    const realW = barW * Math.max(0, f.hp) / 100;
+    ctx.fillStyle = '#ffb02e';
+    ctx.fillRect(right ? x + barW - shownW : x, y, shownW, barH);
+    const g = ctx.createLinearGradient(0, y, 0, y + barH);
+    g.addColorStop(0, f.hp > 30 ? '#7ef29a' : '#ff7a6a');
+    g.addColorStop(1, f.hp > 30 ? '#2fa85c' : '#c8362a');
+    ctx.fillStyle = g;
+    ctx.fillRect(right ? x + barW - realW : x, y, realW, barH);
+
+    ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1.5;
+    ctx.strokeRect(x, y, barW, barH);
+
+    ctx.fillStyle = '#eaf2ff';
+    ctx.font = 'bold 14px system-ui, sans-serif';
+    ctx.textAlign = right ? 'right' : 'left';
+    ctx.fillText(f.name, right ? x + barW : x, y + barH + 16);
+
+    // πόντοι γύρων
+    for (let i = 0; i < ROUNDS_TO_WIN; i++) {
+      const cx = right ? x + barW - 8 - i * 18 : x + 8 + i * 18;
+      ctx.beginPath(); ctx.arc(cx, y + barH + 26, 5.5, 0, 6.284);
+      ctx.fillStyle = i < wins ? '#ffd54a' : 'rgba(255,255,255,.22)';
+      ctx.fill();
+    }
+  };
+  draw(28, hero, false, M.wins[0]);
+  draw(W - 28 - 300, villain, true, M.wins[1]);
+
+  // χρονόμετρο
+  const secs = Math.ceil(M.timer / 60);
+  ctx.fillStyle = 'rgba(0,0,0,.5)';
+  ctx.fillRect(W / 2 - 34, 14, 68, 44);
+  ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = 2;
+  ctx.strokeRect(W / 2 - 34, 14, 68, 44);
+  ctx.fillStyle = secs <= 10 ? '#ff7a6a' : '#fff';
+  ctx.font = 'bold 30px system-ui, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(String(secs).padStart(2, '0'), W / 2, 38);
+  ctx.textBaseline = 'alphabetic';
+}
+
+function drawBigText() {
+  if (!M.big) return;
+  const k = Math.min(1, M.bigT / 12);
+  const scale = 0.7 + 0.3 * k + (M.bigT < 12 ? (1 - k) * 0.5 : 0);
+  ctx.save();
+  ctx.translate(W / 2, 175);
+  ctx.scale(scale, scale);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = 'bold 56px system-ui, sans-serif';
+  ctx.lineWidth = 8; ctx.strokeStyle = 'rgba(0,0,0,.65)';
+  ctx.strokeText(M.big, 0, 0);
+  const g = ctx.createLinearGradient(0, -30, 0, 30);
+  g.addColorStop(0, '#fff6cf'); g.addColorStop(1, '#ffb02e');
+  ctx.fillStyle = g;
+  ctx.fillText(M.big, 0, 0);
+  ctx.restore();
+  ctx.textBaseline = 'alphabetic';
+}
+
+function render() {
+  ctx.save();
+  if (shakeAmt > 0) ctx.translate(rnd(-shakeAmt, shakeAmt), rnd(-shakeAmt, shakeAmt));
+  drawBackground();
+
+  const order = hero.y <= villain.y ? [villain, hero] : [hero, villain];
+  for (const f of order) drawFighter(f);
+
+  for (const p of particles) {
+    ctx.globalAlpha = Math.min(1, p.life / 16);
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.284); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+
+  if (M.mode !== 'menu') { drawHealthBars(); drawBigText(); }
+
+  if (M.mode === 'paused') {
+    ctx.fillStyle = 'rgba(3,6,16,.68)'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#e8eefc'; ctx.textAlign = 'center';
+    ctx.font = 'bold 40px system-ui, sans-serif';
+    ctx.fillText('ΠΑΥΣΗ', W / 2, H / 2 - 4);
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(232,238,252,.7)';
+    ctx.fillText('Πάτα ⏸ για συνέχεια', W / 2, H / 2 + 28);
+  }
+}
+
+/* =========================================================
+   Βρόχος
+   ========================================================= */
+let last = performance.now(), acc = 0;
+function frame(now) {
+  const dt = Math.min(now - last, 200);
+  last = now; acc += dt;
+  let guard = 0;
+  while (acc >= STEP && guard++ < 5) { update(); acc -= STEP; }
+  if (acc > STEP * 5) acc = 0;
+  render();
+  requestAnimationFrame(frame);
+}
+
+/* =========================================================
+   Μενού / UI
+   ========================================================= */
+const overlay = document.getElementById('overlay');
+const ovTitle = document.getElementById('ovTitle');
+const ovText = document.getElementById('ovText');
+const startBtn = document.getElementById('btnStart');
+const diffRow = document.getElementById('diffRow');
+let chosenDiff = 'normal';
+
+diffRow.addEventListener('click', e => {
+  const b = e.target.closest('[data-diff]');
+  if (!b) return;
+  chosenDiff = b.dataset.diff;
+  [...diffRow.children].forEach(c => c.classList.toggle('sel', c === b));
+});
+
+startBtn.addEventListener('click', () => {
+  audioUnlock();
+  overlay.classList.add('hidden');
+  ovTitle.textContent = '';
+  startMatch(chosenDiff);
+});
+
+function showResult() {
+  M.mode = 'over';
+  const won = M.wins[0] >= ROUNDS_TO_WIN;
+  ovTitle.textContent = won ? '🏆 ΝΙΚΗΣΕΣ!' : '💀 ΕΧΑΣΕΣ';
+  ovText.textContent = won
+    ? 'Καθάρισες τον Κακόστρουμφ ' + M.wins[0] + '-' + M.wins[1] + ' (' + DIFF[M.diff].label + '). Δοκίμασε μεγαλύτερη δυσκολία!'
+    : 'Ο Κακόστρουμφ κέρδισε ' + M.wins[1] + '-' + M.wins[0] + '. Μπλόκαρε πιο πολύ και χτύπα αμέσως μετά.';
+  startBtn.textContent = 'ΞΑΝΑ';
+  overlay.classList.remove('hidden');
+}
+
+function togglePause() {
+  if (M.mode === 'playing') M.mode = 'paused';
+  else if (M.mode === 'paused') M.mode = 'playing';
+  document.getElementById('btnPause').classList.toggle('active', M.mode === 'paused');
+}
+
+document.getElementById('btnPause').addEventListener('click', e => { e.preventDefault(); togglePause(); });
+document.getElementById('btnSound').addEventListener('click', e => {
+  e.preventDefault(); audioUnlock();
+  muted = !muted;
+  e.currentTarget.textContent = muted ? '🔇' : '🔊';
+});
+document.getElementById('btnFull').addEventListener('click', async e => {
+  e.preventDefault();
+  try {
+    if (!document.fullscreenElement) {
+      await document.documentElement.requestFullscreen();
+      if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape').catch(() => {});
+    } else await document.exitFullscreen();
+  } catch (_) {}
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && M.mode === 'playing') togglePause();
+});
+
+layout();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
