@@ -30,6 +30,25 @@
 επίθεση, οπότε το σπαμ τιμωρείται: κράτα ΑΜΥΝΑ όσο ετοιμάζεται και χτύπα αμέσως μετά.
 Τρεις δυσκολίες αλλάζουν ταχύτητα αντίδρασης, επιθετικότητα και συχνότητα άμυνας.
 
+## Παίξ' το από το GitHub Pages
+
+Το repo είναι δημόσιο και το default branch είναι το `claude/simple-fighting-game-html-fi6go0`,
+οπότε το Pages μπορεί να σερβίρει το παιχνίδι κατευθείαν από εκεί:
+
+**https://domazakis.github.io/Smurf_fighter/**
+
+Το `.github/workflows/pages.yml` ανεβάζει τη ρίζα του repo σε κάθε push. Χρειάζεται όμως
+να ανοίξει το Pages **μία φορά με το χέρι** — το token του workflow δεν έχει δικαίωμα να το
+ενεργοποιήσει (`Create Pages site failed: Resource not accessible by integration`):
+
+> Settings → Pages → Build and deployment → Source: **GitHub Actions**
+
+Μετά από αυτό, κάθε push ανεβαίνει μόνο του (ή Actions → *Deploy to GitHub Pages* → *Run workflow*
+για να τρέξει αμέσως).
+
+Εναλλακτικά, χωρίς Actions: Settings → Pages → Source: **Deploy from a branch** →
+branch `claude/simple-fighting-game-html-fi6go0`, folder `/ (root)`.
+
 ## Τεχνικά
 
 - Canvas 2D, λογική ανάλυση 800×450, κλιμάκωση σε κάθε οθόνη με `devicePixelRatio`.
